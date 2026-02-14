@@ -130,7 +130,7 @@ export async function fetchFlavorPairingsForIngredient(ingredient: string): Prom
   }
 }
 
-// --- Nutrition API Functions ---
+// --- Nutrition API Functions with Internet Data ---
 interface NutritionData {
   calories?: number
   protein?: number
@@ -141,78 +141,145 @@ interface NutritionData {
   sugars?: number
 }
 
-// Mock nutrition database for common ingredients
-const ingredientNutritionDatabase: Record<string, NutritionData> = {
-  "pasta": { calories: 131, protein: 5, carbs: 25, fat: 1.1, fiber: 1.8, sodium: 3 },
-  "rice": { calories: 130, protein: 2.7, carbs: 28, fat: 0.3, fiber: 0.4, sodium: 2 },
-  "chicken": { calories: 165, protein: 31, carbs: 0, fat: 3.6, fiber: 0, sodium: 74 },
-  "beef": { calories: 250, protein: 26, carbs: 0, fat: 16, fiber: 0, sodium: 75 },
-  "tofu": { calories: 76, protein: 8, carbs: 1.9, fat: 4.8, fiber: 1, sodium: 11 },
-  "salmon": { calories: 208, protein: 20, carbs: 0, fat: 13, fiber: 0, sodium: 75 },
-  "broccoli": { calories: 34, protein: 2.8, carbs: 7, fat: 0.4, fiber: 2.4, sodium: 64 },
-  "tomato": { calories: 18, protein: 0.9, carbs: 3.9, fat: 0.2, fiber: 1.2, sodium: 5 },
-  "olive oil": { calories: 119, protein: 0, carbs: 0, fat: 13.5, fiber: 0, sodium: 0 },
-  "garlic": { calories: 149, protein: 6.4, carbs: 33, fat: 0.5, fiber: 2.1, sodium: 17 },
-  "onion": { calories: 40, protein: 1.1, carbs: 9, fat: 0.1, fiber: 1.7, sodium: 4 },
-  "egg": { calories: 155, protein: 13, carbs: 1.1, fat: 11, fiber: 0, sodium: 140 },
-  "milk": { calories: 61, protein: 3.2, carbs: 4.8, fat: 3.3, fiber: 0, sodium: 44 },
-  "cheese": { calories: 402, protein: 25, carbs: 1.3, fat: 33, fiber: 0, sodium: 714 },
-  "butter": { calories: 717, protein: 0.9, carbs: 0, fat: 81, fiber: 0, sodium: 15 },
-  "beans": { calories: 127, protein: 8.7, carbs: 23, fat: 0.4, fiber: 6.4, sodium: 2 },
-  "lentils": { calories: 116, protein: 9.2, carbs: 20, fat: 0.4, fiber: 8, sodium: 2 },
-  "quinoa": { calories: 120, protein: 4.4, carbs: 21, fat: 1.9, fiber: 2.8, sodium: 7 },
-  "avocado": { calories: 160, protein: 2, carbs: 9, fat: 15, fiber: 7, sodium: 7 },
-  "banana": { calories: 89, protein: 1.1, carbs: 23, fat: 0.3, fiber: 2.6, sodium: 1 },
-  "carrot": { calories: 41, protein: 0.9, carbs: 10, fat: 0.2, fiber: 2.8, sodium: 69 },
-  "potato": { calories: 77, protein: 2, carbs: 17, fat: 0.1, fiber: 2.1, sodium: 6 },
+// USDA FoodData Central API - Free API for nutrition lookup
+const USDA_API_BASE = "https://fdc.nal.usda.gov/api/foods"
+const USDA_API_KEY = process.env.NEXT_PUBLIC_USDA_API_KEY || "DEMO_KEY" // Get free key from https://fdc.nal.usda.gov/api-key-signup
+
+// Spoonacular API as fallback
+const SPOONACULAR_BASE = "https://api.spoonacular.com/food/ingredients"
+const SPOONACULAR_KEY = process.env.NEXT_PUBLIC_SPOONACULAR_KEY || ""
+
+// Fetch nutrition data from USDA FoodData Central API
+async function fetchFromUSDA(ingredient: string): Promise<NutritionData | null> {
+  try {
+    const query = ingredient.split(/\d+\s*(g|kg|ml|tbsp|tsp|cup|oz|lb|piece)/i)[0].trim()
+    const response = await fetch(
+      `${USDA_API_BASE}/search?query=${encodeURIComponent(query)}&pageSize=1&api_key=${USDA_API_KEY}`
+    )
+    
+    if (!response.ok) return null
+    
+    const data = await response.json()
+    if (!data.foods || data.foods.length === 0) return null
+    
+    const food = data.foods[0]
+    const nutrients: Record<string, any> = {}
+    
+    food.foodNutrients?.forEach((nutrient: any) => {
+      const name = nutrient.nutrientName?.toLowerCase() || ""
+      
+      if (name.includes("energy") && name.includes("kcal")) {
+        nutrients.calories = nutrient.value
+      }
+      if (name.includes("protein")) {
+        nutrients.protein = nutrient.value
+      }
+      if (name.includes("carbohydrate") && !name.includes("fiber")) {
+        nutrients.carbs = nutrient.value
+      }
+      if (name.includes("fat") && !name.includes("saturated") && !name.includes("trans")) {
+        nutrients.fat = nutrient.value
+      }
+      if (name.includes("fiber")) {
+        nutrients.fiber = nutrient.value
+      }
+      if (name.includes("sodium")) {
+        nutrients.sodium = nutrient.value
+      }
+    })
+    
+    // Extract quantity multiplier
+    const quantityMatch = ingredient.match(/(\d+(?:\.\d+)?)\s*(g|kg|ml|tbsp|tsp|cup|oz|lb|piece)/)
+    if (quantityMatch) {
+      const quantity = parseFloat(quantityMatch[1])
+      const unit = quantityMatch[2]
+      
+      let multiplier = 1
+      switch (unit) {
+        case "kg": multiplier = quantity * 1000 / 100; break
+        case "g": multiplier = quantity / 100; break
+        case "ml": multiplier = quantity / 100; break
+        case "tbsp": multiplier = quantity * 15 / 100; break
+        case "tsp": multiplier = quantity * 5 / 100; break
+        case "cup": multiplier = quantity * 240 / 100; break
+        case "oz": multiplier = quantity * 28.35 / 100; break
+        case "lb": multiplier = quantity * 454 / 100; break
+        case "piece": multiplier = quantity; break
+      }
+      
+      return {
+        calories: nutrients.calories ? nutrients.calories * multiplier : undefined,
+        protein: nutrients.protein ? nutrients.protein * multiplier : undefined,
+        carbs: nutrients.carbs ? nutrients.carbs * multiplier : undefined,
+        fat: nutrients.fat ? nutrients.fat * multiplier : undefined,
+        fiber: nutrients.fiber ? nutrients.fiber * multiplier : undefined,
+        sodium: nutrients.sodium ? nutrients.sodium * multiplier : undefined,
+      }
+    }
+    
+    return nutrients
+  } catch (e) {
+    return null
+  }
 }
 
-// Calculate nutrition for ingredient by extracting quantity from ingredient string
-function estimateNutritionForIngredient(ingredient: string): NutritionData {
-  const lowerIngredient = ingredient.toLowerCase()
+// Fetch nutrition from Spoonacular API as fallback
+async function fetchFromSpoonacular(ingredient: string): Promise<NutritionData | null> {
+  if (!SPOONACULAR_KEY) return null
   
-  // Find matching ingredient in database
-  let baseNutrition: NutritionData | undefined
-  for (const [key, nutrition] of Object.entries(ingredientNutritionDatabase)) {
-    if (lowerIngredient.includes(key)) {
-      baseNutrition = nutrition
-      break
-    }
-  }
-
-  if (!baseNutrition) {
-    // Default estimate for unknown ingredient
-    return { calories: 50, protein: 2, carbs: 8, fat: 1, fiber: 1, sodium: 20 }
-  }
-
-  // Extract quantity multiplier from ingredient string
-  let multiplier = 1
-  const quantityMatch = ingredient.match(/(\d+(?:\.\d+)?)\s*(g|kg|ml|tbsp|tsp|cup|oz|lb|piece)/)
-  if (quantityMatch) {
-    const quantity = parseFloat(quantityMatch[1])
-    const unit = quantityMatch[2]
+  try {
+    const query = ingredient.split(/\d+\s*(g|kg|ml|tbsp|tsp|cup|oz|lb|piece)/i)[0].trim()
+    const response = await fetch(
+      `${SPOONACULAR_BASE}/search?query=${encodeURIComponent(query)}&number=1&apiKey=${SPOONACULAR_KEY}`
+    )
     
-    // Convert to grams for consistent calculation
-    switch (unit) {
-      case "kg": multiplier = quantity * 1000 / 100; break
-      case "g": multiplier = quantity / 100; break
-      case "ml": multiplier = quantity / 100; break
-      case "tbsp": multiplier = quantity * 15; break
-      case "tsp": multiplier = quantity * 5; break
-      case "cup": multiplier = quantity * 240 / 100; break
-      case "oz": multiplier = quantity * 28.35 / 100; break
-      case "lb": multiplier = quantity * 454 / 100; break
-      case "piece": multiplier = quantity; break
+    if (!response.ok) return null
+    
+    const data = await response.json()
+    if (!Array.isArray(data) || data.length === 0) return null
+    
+    const food = data[0]
+    
+    // Get detailed nutrition
+    const nutritionResponse = await fetch(
+      `${SPOONACULAR_BASE}/${food.id}/information?apiKey=${SPOONACULAR_KEY}`
+    )
+    
+    if (!nutritionResponse.ok) return null
+    
+    const nutrition = await nutritionResponse.json()
+    
+    // Extract quantity multiplier
+    const quantityMatch = ingredient.match(/(\d+(?:\.\d+)?)\s*(g|kg|ml|tbsp|tsp|cup|oz|lb|piece)/)
+    let multiplier = 1
+    
+    if (quantityMatch) {
+      const quantity = parseFloat(quantityMatch[1])
+      const unit = quantityMatch[2]
+      
+      switch (unit) {
+        case "kg": multiplier = quantity * 1000 / 100; break
+        case "g": multiplier = quantity / 100; break
+        case "ml": multiplier = quantity / 100; break
+        case "tbsp": multiplier = quantity * 15 / 100; break
+        case "tsp": multiplier = quantity * 5 / 100; break
+        case "cup": multiplier = quantity * 240 / 100; break
+        case "oz": multiplier = quantity * 28.35 / 100; break
+        case "lb": multiplier = quantity * 454 / 100; break
+        case "piece": multiplier = quantity; break
+      }
     }
-  }
-
-  return {
-    calories: baseNutrition.calories ? Math.round(baseNutrition.calories * multiplier) : 0,
-    protein: baseNutrition.protein ? parseFloat((baseNutrition.protein * multiplier).toFixed(1)) : 0,
-    carbs: baseNutrition.carbs ? parseFloat((baseNutrition.carbs * multiplier).toFixed(1)) : 0,
-    fat: baseNutrition.fat ? parseFloat((baseNutrition.fat * multiplier).toFixed(1)) : 0,
-    fiber: baseNutrition.fiber ? parseFloat((baseNutrition.fiber * multiplier).toFixed(1)) : 0,
-    sodium: baseNutrition.sodium ? Math.round(baseNutrition.sodium * multiplier) : 0,
+    
+    return {
+      calories: nutrition.nutrition?.calories ? nutrition.nutrition.calories * multiplier : undefined,
+      protein: nutrition.nutrition?.protein ? parseFloat(nutrition.nutrition.protein) * multiplier : undefined,
+      carbs: nutrition.nutrition?.carbohydrates ? parseFloat(nutrition.nutrition.carbohydrates) * multiplier : undefined,
+      fat: nutrition.nutrition?.fat ? parseFloat(nutrition.nutrition.fat) * multiplier : undefined,
+      fiber: nutrition.nutrition?.fiber ? parseFloat(nutrition.nutrition.fiber) * multiplier : undefined,
+      sodium: nutrition.nutrition?.sodium ? parseFloat(nutrition.nutrition.sodium) * multiplier : undefined,
+    }
+  } catch (e) {
+    return null
   }
 }
 
@@ -224,16 +291,43 @@ export async function fetchNutritionForIngredients(ingredients: string[]): Promi
     let totalFat = 0
     let totalFiber = 0
     let totalSodium = 0
+    let successCount = 0
 
     for (const ingredient of ingredients) {
-      const nutrition = estimateNutritionForIngredient(ingredient)
-      totalCalories += nutrition.calories || 0
-      totalProtein += nutrition.protein || 0
-      totalCarbs += nutrition.carbs || 0
-      totalFat += nutrition.fat || 0
-      totalFiber += nutrition.fiber || 0
-      totalSodium += nutrition.sodium || 0
+      let nutrition = null
+      
+      // Try USDA first
+      nutrition = await fetchFromUSDA(ingredient)
+      
+      // Fallback to Spoonacular if USDA fails
+      if (!nutrition && SPOONACULAR_KEY) {
+        nutrition = await fetchFromSpoonacular(ingredient)
+      }
+      
+      // If both fail, use estimate
+      if (!nutrition) {
+        nutrition = {
+          calories: 50,
+          protein: 2,
+          carbs: 8,
+          fat: 1,
+          fiber: 1,
+          sodium: 20,
+        }
+      }
+      
+      if (nutrition) {
+        totalCalories += nutrition.calories || 0
+        totalProtein += nutrition.protein || 0
+        totalCarbs += nutrition.carbs || 0
+        totalFat += nutrition.fat || 0
+        totalFiber += nutrition.fiber || 0
+        totalSodium += nutrition.sodium || 0
+        successCount++
+      }
     }
+
+    if (successCount === 0) return null
 
     return {
       calories: totalCalories,
@@ -245,6 +339,7 @@ export async function fetchNutritionForIngredients(ingredients: string[]): Promi
       per: "recipe",
     }
   } catch (e) {
+    console.error("Error fetching nutrition:", e)
     return null
   }
 }
