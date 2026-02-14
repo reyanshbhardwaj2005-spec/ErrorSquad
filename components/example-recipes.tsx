@@ -1,7 +1,33 @@
+"use client"
+
+import { useEffect, useState } from "react"
 import { RecipeCard } from "./recipe-card"
 import { exampleRecipes } from "@/lib/dummy-data"
+import { fetchRecipes } from "@/lib/api"
+import type { Recipe } from "@/lib/dummy-data"
 
 export function ExampleRecipes() {
+  const [recipes, setRecipes] = useState<Recipe[]>(exampleRecipes)
+  const [loading, setLoading] = useState(false)
+
+  useEffect(() => {
+    let mounted = true
+    setLoading(true)
+    fetchRecipes(1, 6)
+      .then((res) => {
+        if (mounted && res && res.length > 0) setRecipes(res)
+      })
+      .catch(() => {
+        // keep fallback exampleRecipes
+      })
+      .finally(() => {
+        if (mounted) setLoading(false)
+      })
+    return () => {
+      mounted = false
+    }
+  }, [])
+
   return (
     <section id="examples" className="bg-muted/30 py-16 md:py-24">
       <div className="container mx-auto px-4 md:px-6">
@@ -15,9 +41,13 @@ export function ExampleRecipes() {
         </div>
 
         <div className="mx-auto grid max-w-5xl gap-8 md:grid-cols-2">
-          {exampleRecipes.map((recipe, index) => (
-            <RecipeCard key={index} recipe={recipe} />
-          ))}
+          {loading && recipes.length === 0 ? (
+            <p className="col-span-2 text-center">Loading recipes…</p>
+          ) : (
+            recipes.map((recipe, index) => (
+              <RecipeCard key={index} recipe={recipe} />
+            ))
+          )}
         </div>
       </div>
     </section>

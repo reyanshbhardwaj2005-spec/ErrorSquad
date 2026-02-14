@@ -10,6 +10,7 @@ import { Sparkles, Loader2 } from "lucide-react"
 import { RecipeCard } from "./recipe-card"
 import type { Recipe } from "@/lib/dummy-data"
 import { generateRecipe } from "@/lib/dummy-data"
+import { fetchRecipes, fetchFlavorPairingsForIngredient } from "@/lib/api"
 
 const cuisines = [
   "Indian",
@@ -47,6 +48,7 @@ export const RecipeGenerator = forwardRef<RecipeGeneratorRef>((_, ref) => {
   const [healthFocus, setHealthFocus] = useState<string[]>([])
   const [generatedRecipe, setGeneratedRecipe] = useState<Recipe | null>(null)
   const [isGenerating, setIsGenerating] = useState(false)
+  const [pairings, setPairings] = useState<string[]>([])
 
   useImperativeHandle(ref, () => ({
     scrollToGenerator: () => {
@@ -77,13 +79,44 @@ export const RecipeGenerator = forwardRef<RecipeGeneratorRef>((_, ref) => {
     if (!baseCuisine || !targetCuisine) return
 
     setIsGenerating(true)
-    
-    // Simulate AI processing time
-    await new Promise(resolve => setTimeout(resolve, 1500))
-    
-    const recipe = generateRecipe(baseCuisine, targetCuisine, dietaryPreferences, healthFocus)
-    setGeneratedRecipe(recipe)
-    setIsGenerating(false)
+    // Try to fetch matching recipes from RecipeDB
+    try {
+      const items = await fetchRecipes(1, 30)
+      // Prefer recipes matching either region or sub_region
+      const matches = items.filter((r) => {
+        const region = (r.baseCuisine || "").toLowerCase()
+        const sub = (r.targetCuisine || "").toLowerCase()
+        const b = baseCuisine.toLowerCase()
+        const t = targetCuisine.toLowerCase()
+        return region.includes(b) || sub.includes(t) || region.includes(t) || sub.includes(b)
+      })
+
+      let recipe = null
+      if (matches && matches.length > 0) {
+        recipe = matches[Math.floor(Math.random() * matches.length)]
+      } else {
+        // fallback to local generator
+        recipe = generateRecipe(baseCuisine, targetCuisine, dietaryPreferences, healthFocus)
+      }
+
+      setGeneratedRecipe(recipe)
+
+      // Fetch flavor pairings for the first ingredient (best-effort)
+      const firstIngredient = recipe.ingredients?.[0]
+      if (firstIngredient) {
+        const name = typeof firstIngredient === "string" ? firstIngredient : (firstIngredient as any).name || String(firstIngredient)
+        const pairings = await fetchFlavorPairingsForIngredient(name)
+        setPairings(pairings)
+      } else {
+        setPairings([])
+      }
+    } catch (e) {
+      const recipe = generateRecipe(baseCuisine, targetCuisine, dietaryPreferences, healthFocus)
+      setGeneratedRecipe(recipe)
+      setPairings([])
+    } finally {
+      setIsGenerating(false)
+    }
   }
 
   const canGenerate = baseCuisine && targetCuisine && baseCuisine !== targetCuisine
@@ -230,6 +263,18 @@ export const RecipeGenerator = forwardRef<RecipeGeneratorRef>((_, ref) => {
           {generatedRecipe && (
             <div className="mt-8">
               <RecipeCard recipe={generatedRecipe} />
+              {pairings && pairings.length > 0 && (
+                <div className="mt-4 rounded-lg bg-muted/50 p-4">
+                  <h4 className="font-semibold text-foreground mb-2">Ingredient Pairings</h4>
+                  <div className="flex flex-wrap gap-2">
+                    {pairings.slice(0, 8).map((p) => (
+                      <span key={p} className="inline-block rounded-full bg-card px-3 py-1 text-sm">
+                        {p}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </div>
