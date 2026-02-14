@@ -41,7 +41,17 @@ export function RecipeOfDay() {
           ) : recipe ? (
             <RecipeCard recipe={recipe} />
           ) : (
-            <p className="text-center text-sm text-muted-foreground">No featured recipe available.</p>
+           <div className="text-center">
+  <a
+    href="http://www.geniuskitchen.com/recipe/amana-hoppel-poppel-155788"
+    target="_blank"
+    rel="noopener noreferrer"
+    className="text-sm text-muted-foreground underline"
+  >
+    View Recipe
+  </a>
+</div>
+
           )}
         </div>
       </div>
