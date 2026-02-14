@@ -1,16 +1,17 @@
 "use client"
 
-import { useState, forwardRef, useImperativeHandle } from "react"
+import { useState, forwardRef, useImperativeHandle, useEffect, useRef } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Label } from "@/components/ui/label"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Sparkles, Loader2 } from "lucide-react"
+import { Sparkles, Loader2, Download, FileText, Sheet, Code } from "lucide-react"
 import { RecipeCard } from "./recipe-card"
 import type { Recipe } from "@/lib/dummy-data"
-import { generateRecipe } from "@/lib/dummy-data"
-import { fetchRecipes, fetchFlavorPairingsForIngredient } from "@/lib/api"
+import { generateRecipe, adaptRecipeForPreferences } from "@/lib/dummy-data"
+import { fetchRecipes, fetchFlavorPairingsForIngredient, fetchNutritionForIngredients } from "@/lib/api"
+import { downloadRecipe } from "@/lib/recipe-export"
 
 const cuisines = [
   "Indian",
@@ -49,6 +50,8 @@ export const RecipeGenerator = forwardRef<RecipeGeneratorRef>((_, ref) => {
   const [generatedRecipe, setGeneratedRecipe] = useState<Recipe | null>(null)
   const [isGenerating, setIsGenerating] = useState(false)
   const [pairings, setPairings] = useState<string[]>([])
+  const [isUpdatingPrefs, setIsUpdatingPrefs] = useState(false)
+  const [isDownloading, setIsDownloading] = useState(false)
 
   useImperativeHandle(ref, () => ({
     scrollToGenerator: () => {
@@ -119,7 +122,93 @@ export const RecipeGenerator = forwardRef<RecipeGeneratorRef>((_, ref) => {
     }
   }
 
-  const canGenerate = baseCuisine && targetCuisine && baseCuisine !== targetCuisine
+  // Track preferences initialization
+  const prefsInitializedRef = useRef(false)
+
+  // Update recipe nutrition and ingredients when health focus changes
+  useEffect(() => {
+    if (!generatedRecipe) return
+    
+    if (!prefsInitializedRef.current && dietaryPreferences.length > 0 && healthFocus.length > 0) {
+      prefsInitializedRef.current = true
+      return
+    }
+
+    let cancelled = false
+    ;(async () => {
+      setIsUpdatingPrefs(true)
+      try {
+        const adapted = adaptRecipeForPreferences(generatedRecipe, dietaryPreferences, healthFocus)
+        // fetch nutrition best-effort
+        const nutrition = await fetchNutritionForIngredients(adapted.ingredients || [])
+        if (!cancelled) {
+          if (nutrition) adapted.nutrition = nutrition
+          setGeneratedRecipe(adapted)
+          // also refresh pairings for first ingredient
+          const first = adapted.ingredients?.[0]
+          if (first) {
+            const name = String(first)
+            const p = await fetchFlavorPairingsForIngredient(name)
+            if (!cancelled) setPairings(p)
+          }
+        }
+      } catch (e) {
+        // ignore
+      } finally {
+        if (!cancelled) setIsUpdatingPrefs(false)
+      }
+    })()
+    return () => { cancelled = true }
+  }, [healthFocus])
+
+  // Update recipe nutrition when dietary preferences change
+  useEffect(() => {
+    if (!prefsInitializedRef.current && dietaryPreferences.length > 0 && healthFocus.length > 0) {
+      prefsInitializedRef.current = true
+      return
+    }
+
+    let cancelled = false
+    ;(async () => {
+      setIsUpdatingPrefs(true)
+      try {
+        if (generatedRecipe) {
+          const adapted = adaptRecipeForPreferences(generatedRecipe, dietaryPreferences, healthFocus)
+          const nutrition = await fetchNutritionForIngredients(adapted.ingredients || [])
+          if (!cancelled) {
+            if (nutrition) adapted.nutrition = nutrition
+            setGeneratedRecipe(adapted)
+            const first = adapted.ingredients?.[0]
+            if (first) {
+              const p = await fetchFlavorPairingsForIngredient(String(first))
+              if (!cancelled) setPairings(p)
+            }
+          }
+        } else if (baseCuisine && targetCuisine && dietaryPreferences.length > 0 && healthFocus.length > 0) {
+          // create a lightweight preview
+          const preview = generateRecipe(baseCuisine, targetCuisine, dietaryPreferences, healthFocus)
+          const adapted = adaptRecipeForPreferences(preview, dietaryPreferences, healthFocus)
+          const nutrition = await fetchNutritionForIngredients(adapted.ingredients || [])
+          if (!cancelled) {
+            if (nutrition) adapted.nutrition = nutrition
+            setGeneratedRecipe(adapted)
+            const first = adapted.ingredients?.[0]
+            if (first) {
+              const p = await fetchFlavorPairingsForIngredient(String(first))
+              if (!cancelled) setPairings(p)
+            }
+          }
+        }
+      } catch (e) {
+        // ignore
+      } finally {
+        if (!cancelled) setIsUpdatingPrefs(false)
+      }
+    })()
+    return () => { cancelled = true }
+  }, [dietaryPreferences])
+
+  const canGenerate = Boolean(baseCuisine && targetCuisine && baseCuisine !== targetCuisine && dietaryPreferences.length > 0 && healthFocus.length > 0)
 
   return (
     <section id="generator" className="py-16 md:py-24">
@@ -251,10 +340,24 @@ export const RecipeGenerator = forwardRef<RecipeGeneratorRef>((_, ref) => {
                 )}
               </Button>
 
-              {!canGenerate && baseCuisine && targetCuisine && (
-                <p className="text-center text-sm text-destructive">
-                  Please select two different cuisines
-                </p>
+              {!canGenerate && (
+                <div className="space-y-2">
+                  {baseCuisine && targetCuisine && baseCuisine === targetCuisine && (
+                    <p className="text-center text-sm text-destructive">
+                      Please select two different cuisines
+                    </p>
+                  )}
+                  {baseCuisine && targetCuisine && dietaryPreferences.length === 0 && (
+                    <p className="text-center text-sm text-muted">
+                      Please select at least one <strong>Dietary Preference</strong> to generate recipes
+                    </p>
+                  )}
+                  {baseCuisine && targetCuisine && healthFocus.length === 0 && (
+                    <p className="text-center text-sm text-muted">
+                      Please select at least one <strong>Health Focus</strong> to generate recipes
+                    </p>
+                  )}
+                </div>
               )}
             </CardContent>
           </Card>
@@ -275,6 +378,98 @@ export const RecipeGenerator = forwardRef<RecipeGeneratorRef>((_, ref) => {
                   </div>
                 </div>
               )}
+              
+              {/* Download Options */}
+              <div className="mt-6 space-y-4">
+                <div className="rounded-lg border border-primary/20 bg-primary/5 p-4">
+                  <h4 className="font-semibold text-foreground mb-3 flex items-center gap-2">
+                    <Download className="h-5 w-5" />
+                    Download Recipe
+                  </h4>
+                  <div className="grid gap-3 sm:grid-cols-3">
+                    <Button
+                      onClick={async () => {
+                        setIsDownloading(true)
+                        try {
+                          downloadRecipe(
+                            {
+                              recipe: generatedRecipe,
+                              pairings,
+                              dietaryPreferences,
+                              healthFocus,
+                              generatedAt: new Date().toISOString(),
+                            },
+                            "json"
+                          )
+                        } finally {
+                          setIsDownloading(false)
+                        }
+                      }}
+                      disabled={isDownloading || isUpdatingPrefs}
+                      variant="outline"
+                      className="gap-2"
+                    >
+                      <Code className="h-4 w-4" />
+                      JSON
+                    </Button>
+
+                    <Button
+                      onClick={async () => {
+                        setIsDownloading(true)
+                        try {
+                          downloadRecipe(
+                            {
+                              recipe: generatedRecipe,
+                              pairings,
+                              dietaryPreferences,
+                              healthFocus,
+                              generatedAt: new Date().toISOString(),
+                            },
+                            "markdown"
+                          )
+                        } finally {
+                          setIsDownloading(false)
+                        }
+                      }}
+                      disabled={isDownloading || isUpdatingPrefs}
+                      variant="outline"
+                      className="gap-2"
+                    >
+                      <FileText className="h-4 w-4" />
+                      Markdown
+                    </Button>
+
+                    <Button
+                      onClick={async () => {
+                        setIsDownloading(true)
+                        try {
+                          downloadRecipe(
+                            {
+                              recipe: generatedRecipe,
+                              pairings,
+                              dietaryPreferences,
+                              healthFocus,
+                              generatedAt: new Date().toISOString(),
+                            },
+                            "csv"
+                          )
+                        } finally {
+                          setIsDownloading(false)
+                        }
+                      }}
+                      disabled={isDownloading || isUpdatingPrefs}
+                      variant="outline"
+                      className="gap-2"
+                    >
+                      <Sheet className="h-4 w-4" />
+                      CSV
+                    </Button>
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-3">
+                    Download includes recipe details, ingredients, cooking steps, nutrition information, and your preferences
+                  </p>
+                </div>
+              </div>
             </div>
           )}
         </div>

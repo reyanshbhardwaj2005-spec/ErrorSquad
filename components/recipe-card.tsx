@@ -1,7 +1,8 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Check, Lightbulb } from "lucide-react"
+import { Check, Lightbulb, Clock, Users } from "lucide-react"
 import type { Recipe } from "@/lib/dummy-data"
+import { NutritionPanel } from "./nutrition-panel"
 
 interface RecipeCardProps {
   recipe: Recipe
@@ -31,16 +32,46 @@ export function RecipeCard({ recipe }: RecipeCardProps) {
             </Badge>
           ))}
         </div>
+        {/* Recipe Quick Info */}
+        {(recipe.servings || recipe.prepTime || recipe.cookTime) && (
+          <div className="flex flex-wrap gap-4 mt-3 text-sm text-muted-foreground">
+            {recipe.servings && (
+              <div className="flex items-center gap-1">
+                <Users className="h-4 w-4" />
+                <span>{recipe.servings} servings</span>
+              </div>
+            )}
+            {recipe.prepTime && (
+              <div className="flex items-center gap-1">
+                <Clock className="h-4 w-4" />
+                <span>Prep: {recipe.prepTime}m</span>
+              </div>
+            )}
+            {recipe.cookTime && (
+              <div className="flex items-center gap-1">
+                <Clock className="h-4 w-4" />
+                <span>Cook: {recipe.cookTime}m</span>
+              </div>
+            )}
+          </div>
+        )}
       </CardHeader>
       <CardContent className="pt-6 space-y-6">
+        {/* Nutrition Information */}
+        {recipe.nutrition && (
+          <div>
+            <NutritionPanel nutrition={recipe.nutrition} recipe={recipe} />
+          </div>
+        )}
+
         {/* Ingredients */}
         <div>
-          <h4 className="font-semibold text-foreground mb-3">Ingredients</h4>
+          <h4 className="font-semibold text-foreground mb-3 text-lg">Ingredients</h4>
           <ul className="grid gap-2 sm:grid-cols-2">
             {recipe.ingredients.map((ingredient, index) => (
               <li key={index} className="flex items-start gap-2 text-sm text-muted-foreground">
-                <span className="text-primary mt-1">•</span>
-                {ingredient}
+                <span className="text-primary mt-1 font-bold">✓</span>
+                <span>{ingredient}</span>
               </li>
             ))}
           </ul>
@@ -48,7 +79,7 @@ export function RecipeCard({ recipe }: RecipeCardProps) {
 
         {/* Cooking Steps */}
         <div>
-          <h4 className="font-semibold text-foreground mb-3">Cooking Steps</h4>
+          <h4 className="font-semibold text-foreground mb-3 text-lg">Cooking Steps</h4>
           <ol className="space-y-3">
             {recipe.steps.map((step, index) => (
               <li key={index} className="flex gap-3 text-sm">

@@ -1,3 +1,24 @@
+export interface NutritionInfo {
+  calories?: number
+  protein?: number
+  carbs?: number
+  fat?: number
+  fiber?: number
+  sodium?: number
+  sugars?: number
+  servingSize?: string
+  per?: string
+}
+
+export interface IngredientNutrition {
+  name: string
+  quantity?: string
+  calories?: number
+  protein?: number
+  carbs?: number
+  fat?: number
+}
+
 export interface Recipe {
   name: string
   baseCuisine: string
@@ -6,6 +27,12 @@ export interface Recipe {
   steps: string[]
   flavorLogic: string
   badges: string[]
+  nutrition?: NutritionInfo
+  ingredientNutrition?: IngredientNutrition[]
+  servings?: number
+  prepTime?: number
+  cookTime?: number
+  difficulty?: "Easy" | "Medium" | "Hard"
 }
 
 const recipeTemplates: Record<string, Recipe[]> = {
@@ -35,7 +62,28 @@ const recipeTemplates: Record<string, Recipe[]> = {
         "Garnish with fresh basil and serve hot."
       ],
       flavorLogic: "Indian spices like garam masala and cumin enhance the Italian tomato base, creating a warming, aromatic pasta dish with familiar comfort food appeal.",
-      badges: ["Vegetarian", "Dairy-Free Option", "30 Minutes"]
+      badges: ["Vegetarian", "Dairy-Free Option", "30 Minutes"],
+      servings: 4,
+      prepTime: 15,
+      cookTime: 20,
+      difficulty: "Easy",
+      nutrition: {
+        calories: 450,
+        protein: 16,
+        carbs: 62,
+        fat: 14,
+        fiber: 4,
+        sodium: 480,
+        sugars: 8,
+        servingSize: "1 plate",
+        per: "serving"
+      },
+      ingredientNutrition: [
+        { name: "400g penne pasta", calories: 1320, protein: 48, carbs: 248, fat: 8 },
+        { name: "2 cups tomato puree", calories: 100, protein: 4, carbs: 20, fat: 0 },
+        { name: "Olive oil", calories: 200, protein: 0, carbs: 0, fat: 22 },
+        { name: "Fresh basil", calories: 5, protein: 0, carbs: 1, fat: 0 }
+      ]
     }
   ],
   "Mexican-Japanese": [
@@ -244,6 +292,106 @@ export function generateRecipe(baseCuisine: string, targetCuisine: string, dieta
   
   // Generate fallback recipe
   return createFallbackRecipe(baseCuisine, targetCuisine, dietary, health)
+}
+
+export function adaptRecipeForPreferences(recipe: Recipe, dietary: string[], health: string[]): Recipe {
+  const adapted = { ...recipe }
+  
+  // Update badges based on preferences
+  adapted.badges = [...recipe.badges]
+  
+  if (dietary.includes("vegetarian") && !adapted.badges.includes("Vegetarian")) {
+    adapted.badges.push("Vegetarian")
+  }
+  if (dietary.includes("vegan") && !adapted.badges.includes("Vegan")) {
+    adapted.badges.push("Vegan")
+  }
+  if (dietary.includes("gluten-free") && !adapted.badges.includes("Gluten-Free")) {
+    adapted.badges.push("Gluten-Free")
+  }
+  if (dietary.includes("dairy-free") && !adapted.badges.includes("Dairy-Free")) {
+    adapted.badges.push("Dairy-Free")
+  }
+  if (dietary.includes("nut-free") && !adapted.badges.includes("Nut-Free")) {
+    adapted.badges.push("Nut-Free")
+  }
+  if (health.includes("low-calorie") && !adapted.badges.includes("Low Calorie")) {
+    adapted.badges.push("Low Calorie")
+  }
+  if (health.includes("high-protein") && !adapted.badges.includes("High Protein")) {
+    adapted.badges.push("High Protein")
+  }
+  if (health.includes("diabetic-friendly") && !adapted.badges.includes("Diabetic Friendly")) {
+    adapted.badges.push("Diabetic Friendly")
+  }
+  
+  // Adapt ingredients based on preferences
+  if (dietary.includes("vegan") || dietary.includes("vegetarian")) {
+    adapted.ingredients = adapted.ingredients.map(ing => {
+      const lower = ing.toLowerCase()
+      // Replace meat with plant-based alternatives
+      if (lower.includes("chicken") || lower.includes("beef") || lower.includes("pork")) {
+        return ing.replace(/chicken|beef|pork/gi, "tofu or plant-based protein")
+      }
+      if (dietary.includes("vegan")) {
+        if (lower.includes("butter")) return ing.replace(/butter/gi, "vegan butter")
+        if (lower.includes("milk")) return ing.replace(/milk/gi, "plant-based milk")
+        if (lower.includes("cheese")) return ing.replace(/cheese/gi, "vegan cheese")
+        if (lower.includes("egg")) return ing.replace(/egg/gi, "flax egg (1 tbsp ground flax + 3 tbsp water)")
+      }
+      if (dietary.includes("dairy-free")) {
+        if (lower.includes("butter")) return ing.replace(/butter/gi, "coconut oil")
+        if (lower.includes("milk")) return ing.replace(/milk/gi, "almond milk")
+        if (lower.includes("cheese")) return ing.replace(/cheese/gi, "nutritional yeast")
+        if (lower.includes("cream")) return ing.replace(/cream/gi, "coconut cream")
+      }
+      return ing
+    })
+  }
+  
+  if (dietary.includes("gluten-free")) {
+    adapted.ingredients = adapted.ingredients.map(ing => {
+      const lower = ing.toLowerCase()
+      if (lower.includes("pasta")) return ing.replace(/pasta/gi, "gluten-free pasta")
+      if (lower.includes("flour")) return ing.replace(/flour/gi, "gluten-free flour")
+      if (lower.includes("bread")) return ing.replace(/bread/gi, "gluten-free bread")
+      return ing
+    })
+  }
+  
+  if (health.includes("low-calorie")) {
+    // Reduce oil and fat
+    adapted.ingredients = adapted.ingredients.map(ing => {
+      const lower = ing.toLowerCase()
+      if (lower.includes("oil")) {
+        return ing.replace(/(\d+\s*)(?:tbsp|cup|ml)\s+oil/, "1 tbsp oil (or cooking spray)")
+      }
+      if (lower.includes("butter")) {
+        return ing.replace(/(\d+\s*)(?:tbsp)\s+butter/, "1 tbsp butter (or oil spray)")
+      }
+      return ing
+    })
+  }
+  
+  // Adjust nutrition if present
+  if (recipe.nutrition && health.length > 0) {
+    const nutrition = { ...recipe.nutrition }
+    
+    if (health.includes("low-calorie")) {
+      // Reduce calories by 20%
+      nutrition.calories = nutrition.calories ? Math.round(nutrition.calories * 0.8) : nutrition.calories
+      nutrition.fat = nutrition.fat ? parseFloat((nutrition.fat * 0.8).toFixed(1)) : nutrition.fat
+    }
+    
+    if (health.includes("high-protein")) {
+      // Increase protein by adding protein-rich ingredients effect
+      nutrition.protein = nutrition.protein ? parseFloat((nutrition.protein * 1.25).toFixed(1)) : nutrition.protein
+    }
+    
+    adapted.nutrition = nutrition
+  }
+  
+  return adapted
 }
 
 export const exampleRecipes: Recipe[] = [
