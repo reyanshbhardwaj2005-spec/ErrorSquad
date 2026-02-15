@@ -111,6 +111,17 @@ const recipeTemplates: Record<string, Recipe[]> = {
         "Assemble tacos with protein, cabbage, avocado, and pickled ginger.",
         "Drizzle with wasabi crema, sprinkle sesame seeds and green onions."
       ],
+      nutrition: {
+        calories: 250,
+        protein: 26,
+        carbs: 52,
+        fat: 19,
+        fiber: 7,
+        sodium: 490,
+        sugars: 10,
+        servingSize: "1 plate",
+        per: "serving"
+      },
       flavorLogic: "The umami-rich teriyaki glaze meets Mexican tortilla tradition, while wasabi crema adds a Japanese kick that replaces traditional jalapeño heat.",
       badges: ["High Protein", "Gluten-Free Option", "Healthy"]
     }
@@ -137,7 +148,17 @@ const recipeTemplates: Record<string, Recipe[]> = {
         "Place duck mixture and vegetables in spring roll wrappers.",
         "Roll tightly and deep fry until golden and crispy.",
         "Serve with hoisin sauce for dipping."
-      ],
+      ],nutrition: {
+        calories: 650,
+        protein: 18,
+        carbs: 67,
+        fat: 12,
+        fiber: 9,
+        sodium: 500,
+        sugars: 9,
+        servingSize: "1 plate",
+        per: "serving"
+      },
       flavorLogic: "French confit technique creates impossibly tender duck, while Chinese five-spice and spring roll presentation honor both culinary traditions.",
       badges: ["High Protein", "Special Occasion"]
     }

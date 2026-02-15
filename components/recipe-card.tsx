@@ -1,8 +1,7 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Check, Lightbulb, Clock, Users } from "lucide-react"
+import { Check, Lightbulb } from "lucide-react"
 import type { Recipe } from "@/lib/dummy-data"
-import { NutritionPanel } from "./nutrition-panel"
 
 interface RecipeCardProps {
   recipe: Recipe
@@ -32,54 +31,59 @@ export function RecipeCard({ recipe }: RecipeCardProps) {
             </Badge>
           ))}
         </div>
-        {/* Recipe Quick Info */}
-        {(recipe.servings || recipe.prepTime || recipe.cookTime) && (
-          <div className="flex flex-wrap gap-4 mt-3 text-sm text-muted-foreground">
-            {recipe.servings && (
-              <div className="flex items-center gap-1">
-                <Users className="h-4 w-4" />
-                <span>{recipe.servings} servings</span>
-              </div>
-            )}
-            {recipe.prepTime && (
-              <div className="flex items-center gap-1">
-                <Clock className="h-4 w-4" />
-                <span>Prep: {recipe.prepTime}m</span>
-              </div>
-            )}
-            {recipe.cookTime && (
-              <div className="flex items-center gap-1">
-                <Clock className="h-4 w-4" />
-                <span>Cook: {recipe.cookTime}m</span>
-              </div>
-            )}
-          </div>
-        )}
       </CardHeader>
       <CardContent className="pt-6 space-y-6">
-        {/* Nutrition Information */}
-        {recipe.nutrition && (
-          <div>
-            <NutritionPanel nutrition={recipe.nutrition} recipe={recipe} />
-          </div>
-        )}
-
         {/* Ingredients */}
         <div>
-          <h4 className="font-semibold text-foreground mb-3 text-lg">Ingredients</h4>
+          <h4 className="font-semibold text-foreground mb-3">Hello</h4>
           <ul className="grid gap-2 sm:grid-cols-2">
             {recipe.ingredients.map((ingredient, index) => (
               <li key={index} className="flex items-start gap-2 text-sm text-muted-foreground">
-                <span className="text-primary mt-1 font-bold">✓</span>
-                <span>{ingredient}</span>
+                <span className="text-primary mt-1">•</span>
+                {ingredient}
               </li>
             ))}
           </ul>
         </div>
 
+        {/* Nutrition Summary */}
+        {recipe.nutrition && (
+          <div>
+            <h4 className="font-semibold text-foreground mb-3">Nutrition Information (Per Serving)</h4>
+            <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+              <div className="rounded-lg bg-card p-3 text-center">
+                <div className="text-xs text-muted-foreground">Calories</div>
+                <div className="text-xl font-bold text-foreground">{Math.round(recipe.nutrition.calories || 0)}</div>
+                <div className="text-xs text-muted-foreground">kcal</div>
+              </div>
+              <div className="rounded-lg bg-card p-3 text-center">
+                <div className="text-xs text-muted-foreground">Protein</div>
+                <div className="text-xl font-bold text-foreground">{Math.round(recipe.nutrition.protein || 0)}</div>
+                <div className="text-xs text-muted-foreground">g</div>
+              </div>
+              <div className="rounded-lg bg-card p-3 text-center">
+                <div className="text-xs text-muted-foreground">Carbs</div>
+                <div className="text-xl font-bold text-foreground">{Math.round(recipe.nutrition.carbs || 0)}</div>
+                <div className="text-xs text-muted-foreground">g</div>
+              </div>
+              <div className="rounded-lg bg-card p-3 text-center">
+                <div className="text-xs text-muted-foreground">Fat</div>
+                <div className="text-xl font-bold text-foreground">{Math.round(recipe.nutrition.fat || 0)}</div>
+                <div className="text-xs text-muted-foreground">g</div>
+              </div>
+              <div className="rounded-lg bg-card p-3 text-center">
+                <div className="text-xs text-muted-foreground">Fiber</div>
+                <div className="text-xl font-bold text-foreground">{Math.round(recipe.nutrition.fiber || 0)}</div>
+                <div className="text-xs text-muted-foreground">g</div>
+              </div>
+            </div>
+            <div className="text-xs text-muted-foreground mt-2">Nutrition values are per serving</div>
+          </div>
+        )}
+
         {/* Cooking Steps */}
         <div>
-          <h4 className="font-semibold text-foreground mb-3 text-lg">Cooking Steps</h4>
+          <h4 className="font-semibold text-foreground mb-3">Cooking Steps</h4>
           <ol className="space-y-3">
             {recipe.steps.map((step, index) => (
               <li key={index} className="flex gap-3 text-sm">

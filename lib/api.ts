@@ -32,6 +32,15 @@ function mapApiToRecipe(item: ApiRecipe): Recipe {
   let ingredients: string[] = []
   if (Array.isArray(item.Ingredients)) {
     ingredients = item.Ingredients.map((i: any) => (typeof i === "string" ? i : i.name || String(i)))
+  } else if (typeof item.Ingredients === "string") {
+    // Ingredients sometimes come as a single delimited string — split by common separators
+    const raw = item.Ingredients as string
+    ingredients = raw.split(/\|\||\n|,|;/).map(s => s.trim()).filter(Boolean)
+  }
+
+  // Ensure at least one placeholder ingredient so nutrition estimation can run
+  if (!ingredients || ingredients.length === 0) {
+    ingredients = ["1 serving mixed vegetables"]
   }
 
   const steps: string[] = item.Processes ? String(item.Processes).split("||").filter(Boolean) : []
@@ -72,8 +81,26 @@ export async function fetchRecipes(page = 1, limit = 6): Promise<Recipe[]> {
   }
 
   const body = await res.json()
+  console.log("API Response: items=" + (body?.payload?.data?.length || 0))
   const items: any[] = body?.payload?.data || []
-  return items.map(mapApiToRecipe)
+  const recipes = items.map(mapApiToRecipe)
+
+  // Best-effort: attach estimated nutrition for API recipes so UI shows nutrition cards.
+  try {
+    await Promise.all(recipes.map(async (r) => {
+      try {
+        const nut = await fetchNutritionForIngredients(r.ingredients || [])
+        if (nut) r.nutrition = nut
+      } catch (e) {
+        // ignore per-item failures
+        console.warn('Nutrition fetch failed for recipe', r.name, e)
+      }
+    }))
+  } catch (e) {
+    console.warn('Bulk nutrition attach failed', e)
+  }
+
+  return recipes
 }
 
 export async function fetchRecipeOfDay(): Promise<Recipe | null> {
@@ -89,7 +116,14 @@ export async function fetchRecipeOfDay(): Promise<Recipe | null> {
   const body = await res.json()
   const item: ApiRecipe = body?.payload?.data
   if (!item) return null
-  return mapApiToRecipe(item)
+  const r = mapApiToRecipe(item)
+  try {
+    const nut = await fetchNutritionForIngredients(r.ingredients || [])
+    if (nut) r.nutrition = nut
+  } catch (e) {
+    console.warn('Nutrition fetch failed for recipe of day', e)
+  }
+  return r
 }
 
 // --- FlavorDB client (best-effort endpoints; will fail gracefully) ---
@@ -139,6 +173,7 @@ interface NutritionData {
   fiber?: number
   sodium?: number
   sugars?: number
+  per?: string
 }
 
 // USDA FoodData Central API - Free API for nutrition lookup
